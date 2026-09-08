@@ -7,6 +7,17 @@
     "not_found_handling": "single-page-application",
     "run_worker_first": ["/api/*"]
   },
-  "d1_databases": [{ "binding": "DB" }],
-  "r2_buckets": [{ "binding": "PHOTOS" }]
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "wedding-photo-booth-db",
+      "database_id": "55e01e32-c509-41e8-ad02-abaca7880d66"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "PHOTOS",
+      "bucket_name": "wedding-photo-booth-photos"
+    }
+  ]
 }
