@@ -15,12 +15,7 @@ A mobile-first wedding photo booth built for Cloudflare Workers.
 
 Open `/admin` and use the password stored as the Cloudflare Worker secret `ADMIN_PASSWORD`.
 
-Admin can:
-
-- View every completed upload, including hidden photos
-- Hide/show photos
-- Download originals
-- Permanently delete photos
+Admin can view completed uploads (including hidden photos), hide/show photos, download originals, and permanently delete photos.
 
 ## Cloudflare architecture
 
@@ -33,7 +28,7 @@ Admin can:
 
 D1 stores metadata only. R2 stores photo files and thumbnails.
 
-## Build
+## Verification
 
 ```bash
 npm install
@@ -44,11 +39,6 @@ npm run build
 
 ## Cloudflare Workers Builds
 
-Use:
+Use production branch `main`, root directory `/` (or blank), build command `npm run build`, and deploy command `npx wrangler deploy`.
 
-- Production branch: `main`
-- Build command: `npm run build`
-- Deploy command: `npx wrangler deploy`
-- Root directory: `/` (or blank)
-
-The repository's `wrangler.jsonc` contains the D1 and R2 bindings. Do not commit `ADMIN_PASSWORD` or API credentials.
+Do not commit `ADMIN_PASSWORD` or Cloudflare API credentials.
