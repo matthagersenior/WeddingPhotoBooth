@@ -166,10 +166,13 @@ async function uploadPart(
     const validation = validateUpload(actualType, contentLength, maxBytes);
     if ("error" in validation) return error(validation.error, validation.status);
   }
-  if (!request.body) return error("Image is empty.");
+
+  const bytes = await request.arrayBuffer();
+  const byteValidation = validateUpload(actualType, bytes.byteLength, maxBytes);
+  if ("error" in byteValidation) return error(byteValidation.error, byteValidation.status);
 
   const key = kind === "image" ? row.image_key : row.thumb_key;
-  const stored = await env.PHOTOS.put(key, request.body, {
+  const stored = await env.PHOTOS.put(key, bytes, {
     httpMetadata: { contentType: actualType },
     customMetadata: { photoId: id, kind },
   });
