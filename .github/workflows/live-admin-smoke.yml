@@ -1,0 +1,56 @@
+name: Live admin smoke
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/live-admin-smoke.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  verify-live:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify deployed Worker health and admin secret
+        shell: bash
+        env:
+          LIVE_HEALTH_URL: https://wedding-photo-booth.matthagersr.workers.dev/api/health
+        run: |
+          set -u
+          for attempt in {1..12}; do
+            echo "Attempt ${attempt}: ${LIVE_HEALTH_URL}"
+            body="$(curl --fail --silent --show-error --max-time 15 "$LIVE_HEALTH_URL" || true)"
+            if [ -n "$body" ]; then
+              echo "Health response: $body"
+              if python - "$body" <<'PY'
+          import json
+          import sys
+
+          try:
+              data = json.loads(sys.argv[1])
+          except Exception as exc:
+              print(f"Invalid JSON: {exc}")
+              raise SystemExit(1)
+
+          if data.get("ok") is not True:
+              print(f"Worker not healthy: {data}")
+              raise SystemExit(1)
+          if data.get("adminConfigured") is not True:
+              print(f"Admin secret not configured: {data}")
+              raise SystemExit(1)
+
+          print("Live Worker healthy; adminConfigured=true")
+          PY
+              then
+                exit 0
+              fi
+            fi
+            sleep 10
+          done
+
+          echo "::error::Live Worker did not report ok=true and adminConfigured=true"
+          exit 1
