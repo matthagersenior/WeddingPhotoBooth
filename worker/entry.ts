@@ -23,7 +23,7 @@ function message(error: unknown): string {
 }
 
 export default {
-  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+  async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
 
     if (url.pathname === "/api/health" && request.method === "GET") {
@@ -67,6 +67,6 @@ export default {
       return json(result, result.ok ? 200 : 503);
     }
 
-    return app.fetch(request, env as Parameters<typeof app.fetch>[1], ctx);
+    return app.fetch(request, env as Parameters<typeof app.fetch>[1]);
   },
 } satisfies ExportedHandler<Env>;
