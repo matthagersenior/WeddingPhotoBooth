@@ -67,6 +67,9 @@ export default {
       return json(result, result.ok ? 200 : 503);
     }
 
-    return app.fetch(request, env as Parameters<typeof app.fetch>[1]);
+    return app.fetch(
+      request as Parameters<typeof app.fetch>[0],
+      env as Parameters<typeof app.fetch>[1],
+    );
   },
 } satisfies ExportedHandler<Env>;
