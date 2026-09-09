@@ -27,6 +27,12 @@ import {
 } from "./lib/api";
 import { captureFile, captureVideoFrame, type CapturedPhoto } from "./lib/capture";
 import type { PhotoItem } from "./lib/types";
+import couplePhoto1 from "../download.jpeg";
+import couplePhoto2 from "../download (1).jpeg";
+import couplePhoto3 from "../download (2).jpeg";
+import couplePhoto4 from "../download (3).jpeg";
+import couplePhoto5 from "../download (4).jpeg";
+import couplePhoto6 from "../download (5).jpeg";
 
 const FILTERS = [
   { id: "natural", label: "Natural", css: "none" },
@@ -35,6 +41,8 @@ const FILTERS = [
   { id: "mono", label: "B&W", css: "grayscale(1) contrast(1.08)" },
   { id: "vivid", label: "Vivid", css: "saturate(1.35) contrast(1.06)" },
 ] as const;
+
+const COUPLE_PHOTOS = [couplePhoto1, couplePhoto2, couplePhoto3, couplePhoto4, couplePhoto5, couplePhoto6];
 
 function navigate(path: string) {
   window.history.pushState({}, "", path);
@@ -61,6 +69,100 @@ function Shell({ children }: { children: React.ReactNode }) {
   );
 }
 
+function CouplePhotos({ compact = false }: { compact?: boolean }) {
+  return (
+    <section aria-label="Couple photos" style={{ margin: compact ? "0 auto 24px" : "0 auto 28px", maxWidth: 900 }}>
+      {!compact && <p style={{ textAlign: "center", color: "#8e7378", margin: "0 0 12px", fontSize: ".85rem" }}>A little preview of the love story</p>}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(6, minmax(0, 1fr))", gap: 7 }}>
+        {COUPLE_PHOTOS.map((photo, index) => (
+          <img
+            key={photo}
+            src={photo}
+            alt={`Couple photo ${index + 1}`}
+            loading={index < 2 ? "eager" : "lazy"}
+            style={{ width: "100%", aspectRatio: index % 3 === 0 ? "3 / 4" : "1 / 1", objectFit: "cover", borderRadius: 14, boxShadow: "0 8px 24px rgba(77,52,58,.10)" }}
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function waitForVideoReady(video: HTMLVideoElement, timeoutMs = 6500): Promise<void> {
+  if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA && video.videoWidth > 0 && video.videoHeight > 0) {
+    return Promise.resolve();
+  }
+
+  return new Promise((resolve, reject) => {
+    let timeout = 0;
+    const cleanup = () => {
+      window.clearTimeout(timeout);
+      video.removeEventListener("loadedmetadata", ready);
+      video.removeEventListener("canplay", ready);
+    };
+    const ready = () => {
+      if (video.videoWidth > 0 && video.videoHeight > 0) {
+        cleanup();
+        resolve();
+      }
+    };
+    timeout = window.setTimeout(() => {
+      cleanup();
+      reject(new Error("The camera opened but did not provide a video preview. Try flipping cameras or choose a photo from your phone."));
+    }, timeoutMs);
+    video.addEventListener("loadedmetadata", ready);
+    video.addEventListener("canplay", ready);
+    ready();
+  });
+}
+
+function loadImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("Could not load the QR photo."));
+    image.src = src;
+  });
+}
+
+function drawImageCover(ctx: CanvasRenderingContext2D, image: HTMLImageElement, x: number, y: number, size: number) {
+  const sourceSize = Math.min(image.naturalWidth, image.naturalHeight);
+  const sx = (image.naturalWidth - sourceSize) / 2;
+  const sy = (image.naturalHeight - sourceSize) / 2;
+  ctx.drawImage(image, sx, sy, sourceSize, sourceSize, x, y, size, size);
+}
+
+async function makePhotoQr(url: string): Promise<string> {
+  const canvas = document.createElement("canvas");
+  await QRCode.toCanvas(canvas, url, { width: 900, margin: 2, errorCorrectionLevel: "H" });
+  const photo = await loadImage(couplePhoto6);
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return canvas.toDataURL("image/png");
+
+  const logoSize = Math.round(canvas.width * 0.19);
+  const padding = Math.round(canvas.width * 0.018);
+  const outer = logoSize + padding * 2;
+  const outerX = Math.round((canvas.width - outer) / 2);
+  const outerY = Math.round((canvas.height - outer) / 2);
+  const x = outerX + padding;
+  const y = outerY + padding;
+
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(outerX, outerY, outer, outer);
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(x + logoSize / 2, y + logoSize / 2, logoSize / 2, 0, Math.PI * 2);
+  ctx.clip();
+  drawImageCover(ctx, photo, x, y, logoSize);
+  ctx.restore();
+  ctx.strokeStyle = "#ffffff";
+  ctx.lineWidth = Math.max(8, padding / 2);
+  ctx.beginPath();
+  ctx.arc(x + logoSize / 2, y + logoSize / 2, logoSize / 2, 0, Math.PI * 2);
+  ctx.stroke();
+  return canvas.toDataURL("image/png");
+}
+
 function Booth() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -77,35 +179,49 @@ function Booth() {
 
   const filterCss = FILTERS.find((filter) => filter.id === filterId)?.css ?? "none";
 
-  const stopCamera = () => {
+  const releaseStream = () => {
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
+    if (videoRef.current) videoRef.current.srcObject = null;
+  };
+
+  const stopCamera = () => {
+    releaseStream();
     setCameraOn(false);
   };
 
   const startCamera = async (nextFacing = facing) => {
-    setStatus("");
-    stopCamera();
+    setStatus("Starting camera…");
+    releaseStream();
+    setCameraOn(false);
     try {
+      if (!navigator.mediaDevices?.getUserMedia) throw new Error("This browser does not expose a live camera preview.");
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: nextFacing }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+        video: {
+          facingMode: { ideal: nextFacing },
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+        },
         audio: false,
       });
+      const video = videoRef.current;
+      if (!video) throw new Error("The camera preview is not ready.");
       streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
-      }
+      video.srcObject = stream;
+      video.muted = true;
+      video.playsInline = true;
+      await video.play();
+      await waitForVideoReady(video);
       setCameraOn(true);
-    } catch {
-      setStatus("Camera access was unavailable. You can still choose a photo from your phone.");
+      setStatus("");
+    } catch (error) {
+      releaseStream();
+      setCameraOn(false);
+      setStatus(error instanceof Error ? `${error.message} You can still choose a photo from your phone.` : "Camera access was unavailable. You can still choose a photo from your phone.");
     }
   };
 
-  useEffect(() => () => stopCamera(), []);
-  useEffect(() => {
-    if (cameraOn && videoRef.current && streamRef.current) videoRef.current.srcObject = streamRef.current;
-  }, [cameraOn]);
+  useEffect(() => () => releaseStream(), []);
 
   const flipCamera = async () => {
     const next = facing === "user" ? "environment" : "user";
@@ -123,6 +239,7 @@ function Booth() {
         await new Promise((resolve) => setTimeout(resolve, 650));
       }
       setCountdown(null);
+      await waitForVideoReady(videoRef.current, 2500);
       const next = await captureVideoFrame(videoRef.current, filterId);
       setCapture(next);
       stopCamera();
@@ -180,21 +297,30 @@ function Booth() {
         <p>Take a photo here or choose one from your phone. No account required.</p>
       </section>
 
+      <CouplePhotos />
+
       <section className="booth-card">
         <div className="camera-stage">
           {capture ? (
             <img className="review-image" src={capture.previewUrl} alt="Your wedding photo preview" />
           ) : (
             <>
-              <video ref={videoRef} playsInline muted className={cameraOn ? "camera-video active" : "camera-video"} style={{ filter: filterCss }} />
+              <video
+                ref={videoRef}
+                autoPlay
+                playsInline
+                muted
+                className={cameraOn ? "camera-video active" : "camera-video"}
+                style={{ filter: filterCss, transform: facing === "user" ? "scaleX(-1)" : "none" }}
+              />
               {!cameraOn && (
                 <div className="camera-empty">
                   <Camera size={48} />
                   <h2>Ready when you are</h2>
-                  <p>Start the camera or choose a photo already on your phone.</p>
+                  <p>Start the live camera or choose an existing photo from your phone.</p>
                   <div className="inline-actions">
-                    <button className="primary" onClick={() => startCamera()}><Camera size={18} /> Start camera</button>
-                    <button className="secondary" onClick={() => fileRef.current?.click()}><ImagePlus size={18} /> Choose photo</button>
+                    <button className="primary" onClick={() => startCamera()} disabled={busy}><Camera size={18} /> Start camera</button>
+                    <button className="secondary" onClick={() => fileRef.current?.click()} disabled={busy}><ImagePlus size={18} /> Choose from phone</button>
                   </div>
                 </div>
               )}
@@ -233,7 +359,7 @@ function Booth() {
           </div>
         )}
 
-        <input ref={fileRef} hidden type="file" accept="image/*" capture="environment" onChange={(event) => choosePhoto(event.target.files?.[0])} />
+        <input ref={fileRef} hidden type="file" accept="image/*" onChange={(event) => choosePhoto(event.target.files?.[0])} />
         {status && <p className="status-message">{status}</p>}
       </section>
 
@@ -280,12 +406,14 @@ function Album() {
       <section className="hero compact-hero">
         <p className="eyebrow">The shared album</p>
         <h1>All the <em>good stuff.</em></h1>
-        <p>{items.length ? `${items.length} wedding ${items.length === 1 ? "memory" : "memories"} and counting.` : "Photos will appear here as guests add them."}</p>
-        {items.length > 1 && <button className="secondary slideshow-button" onClick={() => { setSelected(0); setPlaying(true); }}><Play size={17} fill="currentColor" /> Start slideshow</button>}
+        <p>{items.length ? `${items.length} guest ${items.length === 1 ? "memory" : "memories"} and counting.` : "The couple’s photos are here now; guest photos will join them as the night unfolds."}</p>
+        {items.length > 1 && <button className="secondary slideshow-button" onClick={() => { setSelected(0); setPlaying(true); }}><Play size={17} fill="currentColor" /> Start guest slideshow</button>}
       </section>
 
-      {loading ? <div className="empty-state">Loading the wedding album…</div> : items.length === 0 ? (
-        <div className="empty-state"><Images size={44} /><h2>Be the first one in the album</h2><button className="primary" onClick={() => navigate("/")}>Take a photo</button></div>
+      <CouplePhotos compact />
+
+      {loading ? <div className="empty-state">Loading guest photos…</div> : items.length === 0 ? (
+        <div className="empty-state"><Images size={44} /><h2>Guest photos will appear here</h2><button className="primary" onClick={() => navigate("/")}>Add the first guest photo</button></div>
       ) : (
         <section className="photo-grid">
           {items.map((photo, index) => (
@@ -316,10 +444,15 @@ function Album() {
 
 function Share() {
   const [qr, setQr] = useState("");
+  const [qrError, setQrError] = useState("");
   const weddingUrl = useMemo(() => window.location.origin, []);
 
   useEffect(() => {
-    QRCode.toDataURL(weddingUrl, { width: 900, margin: 2, errorCorrectionLevel: "H" }).then(setQr).catch(() => setQr(""));
+    let cancelled = false;
+    void makePhotoQr(weddingUrl)
+      .then((nextQr) => { if (!cancelled) setQr(nextQr); })
+      .catch(() => { if (!cancelled) setQrError("Could not generate the QR code."); });
+    return () => { cancelled = true; };
   }, [weddingUrl]);
 
   return (
@@ -327,14 +460,14 @@ function Share() {
       <section className="share-card">
         <p className="eyebrow">Scan · Snap · Share</p>
         <h1>Join the wedding album</h1>
-        <p>Point your phone camera at the QR code. No app and no account needed.</p>
-        {qr ? <img className="qr-image" src={qr} alt={`QR code for ${weddingUrl}`} /> : <div className="qr-placeholder">Generating QR…</div>}
+        <p>Point your phone camera at the QR code. The couple’s photo in the middle is part of the code design.</p>
+        {qr ? <img className="qr-image" src={qr} alt={`QR code for ${weddingUrl} with the couple photo in the center`} /> : <div className="qr-placeholder">{qrError || "Generating QR…"}</div>}
         <strong className="share-url">{weddingUrl.replace(/^https?:\/\//, "")}</strong>
         <div className="share-actions">
           <button className="primary" onClick={() => navigate("/")}><Camera size={18} /> Open photo booth</button>
           {qr && <a className="secondary link-button" href={qr} download="wedding-photo-booth-qr.png"><Download size={18} /> Save QR</a>}
         </div>
-        <p className="print-note">Tip: save this QR and print it on table cards, signs, or your welcome board.</p>
+        <p className="print-note">Save this QR for table cards, signs, or the welcome board.</p>
       </section>
     </main>
   );
