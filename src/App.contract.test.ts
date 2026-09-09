@@ -1,31 +1,44 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-const source = readFileSync(new URL("./App.tsx", import.meta.url), "utf8");
+const booth = readFileSync(new URL("./pages/BoothPage.tsx", import.meta.url), "utf8");
+const camera = readFileSync(new URL("./camera.ts", import.meta.url), "utf8");
+const couplePhotos = readFileSync(new URL("./couplePhotos.ts", import.meta.url), "utf8");
+const qr = readFileSync(new URL("./qr.ts", import.meta.url), "utf8");
+const main = readFileSync(new URL("./main.tsx", import.meta.url), "utf8");
 
 describe("wedding photo booth UI contracts", () => {
   it("uses the phone photo picker without forcing the camera", () => {
-    expect(source).toContain('type="file"');
-    expect(source).toContain('accept="image/*"');
-    expect(source).not.toContain('capture="environment"');
+    expect(booth).toContain('type="file"');
+    expect(booth).toContain('accept="image/*"');
+    expect(booth).toContain("showOpenFilePicker");
+    expect(booth).not.toContain('capture="environment"');
   });
 
   it("keeps the live camera preview explicitly autoplaying and waits for video readiness", () => {
-    expect(source).toContain("autoPlay");
-    expect(source).toContain("loadedmetadata");
-    expect(source).toContain("videoWidth");
+    expect(booth).toContain("autoPlay");
+    expect(camera).toContain("loadedmetadata");
+    expect(camera).toContain("videoWidth");
+    expect(camera).toContain("videoHeight");
   });
 
   it("uses all six supplied couple photos in the experience", () => {
-    expect(source).toContain('from "../download.jpeg"');
+    expect(couplePhotos).toContain('from "../download.jpeg"');
     for (let index = 1; index <= 5; index += 1) {
-      expect(source).toContain(`from "../download (${index}).jpeg"`);
+      expect(couplePhotos).toContain(`from "../download (${index}).jpeg"`);
     }
+    expect(booth).toContain("COUPLE_PHOTOS");
   });
 
   it("composites the last supplied photo into the center of the QR code", () => {
-    expect(source).toContain("QRCode.toCanvas");
-    expect(source).toContain("drawImage");
-    expect(source).toContain("couplePhoto6");
+    expect(qr).toContain("QRCode.toCanvas");
+    expect(qr).toContain("drawImage");
+    expect(qr).toContain("couplePhoto6");
+    expect(qr).toContain('errorCorrectionLevel: "H"');
+  });
+
+  it("boots the corrected wedding app", () => {
+    expect(main).toContain('import WeddingApp from "./WeddingApp"');
+    expect(main).toContain("<WeddingApp />");
   });
 });
