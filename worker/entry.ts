@@ -1,4 +1,5 @@
 import app from "./index";
+import { ensureSchema } from "./schema";
 
 interface Env {
   DB?: D1Database;
@@ -31,24 +32,36 @@ export default {
         ok: boolean;
         bindings: { db: boolean; photos: boolean };
         db: { ok: boolean; error?: string };
+        schema: { ok: boolean; error?: string };
         r2: { ok: boolean; error?: string };
         adminConfigured: boolean;
       } = {
         ok: false,
         bindings: { db: Boolean(env.DB), photos: Boolean(env.PHOTOS) },
         db: { ok: false },
+        schema: { ok: false },
         r2: { ok: false },
         adminConfigured: Boolean(env.ADMIN_PASSWORD),
       };
 
       if (!env.DB) {
         result.db.error = "DB binding is missing";
+        result.schema.error = "DB binding is missing";
       } else {
         try {
           await env.DB.prepare("SELECT 1 AS ok").first();
           result.db.ok = true;
         } catch (error) {
           result.db.error = message(error);
+        }
+
+        if (result.db.ok) {
+          try {
+            await ensureSchema(env.DB);
+            result.schema.ok = true;
+          } catch (error) {
+            result.schema.error = message(error);
+          }
         }
       }
 
@@ -63,7 +76,7 @@ export default {
         }
       }
 
-      result.ok = result.db.ok && result.r2.ok;
+      result.ok = result.db.ok && result.schema.ok && result.r2.ok;
       return json(result, result.ok ? 200 : 503);
     }
 
